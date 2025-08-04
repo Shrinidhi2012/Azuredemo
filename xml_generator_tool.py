@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import os
@@ -29,14 +28,14 @@ if input_file and db_file:
 
             # Match report name
             db_filtered = db_df[
-                db_df['RSReport'].str.contains(input_report, case=False, na=False) &
-                db_df['RSEngine'].str.lower().eq('actuate') &
-                db_df['RSStatus'].str.lower().isin(['cleared', 'saved']) &
-                db_df['RSParameters'].str.contains(f"PFondsMulti:\s*{input_fund}", na=False)
+                db_df['RS_Report'].str.contains(input_report, case=False, na=False) &
+                db_df['RS_ENGINE'].str.lower().eq('actuate') &
+                db_df['RS_STATUS'].str.lower().eq('succeeded') &
+                db_df['RS_PARAMETERS'].str.contains(f"PFondsMulti:\s*{input_fund}", na=False)
             ].copy()
 
-            # Convert RSStart to datetime
-            db_filtered['RSDateOnly'] = db_filtered['RSStart'].str.extract(r'(\d+\|\d+\|\d+)')[0].str.replace('|', '/')
+            # Convert RS_START to datetime
+            db_filtered['RSDateOnly'] = db_filtered['RS_START'].str.extract(r'(\d+\|\d+\|\d+)')[0].str.replace('|', '/')
             db_filtered['RSDateOnly'] = pd.to_datetime(db_filtered['RSDateOnly'], format='%m/%d/%Y', errors='coerce')
 
             if pd.notna(input_date):
@@ -47,19 +46,24 @@ if input_file and db_file:
                 db_filtered = db_filtered[db_filtered['RSDateOnly'] == latest_date]
 
             for i, matched_row in db_filtered.iterrows():
-                report_path = matched_row['RSReport']
+                report_path = matched_row['RS_Report']
                 xml_path = "/".join(report_path.split("/")[:-1])
 
                 # Extract parameters into XML lines
-                param_string = matched_row['RSParameters']
+                param_string = matched_row['RS_PARAMETERS']
                 parameters = [p.strip() for p in param_string.split(';') if ':' in p]
                 xml_params = ""
                 for p in parameters:
                     key, val = map(str.strip, p.split(':', 1))
-                    xml_params += f'  <parameter name="{key}" value="{val}"/>\n'
+                    xml_params += f'    <parameter name="{key}">\n        <value>{val}</value>\n    </parameter>\n'
 
-                report_format = matched_row['RSFormat']
-                xml_content = f'<reportTestCase name="" format="{report_format}" pfad="{xml_path}">\n{xml_params}</reportTestCase>'
+                report_format = matched_row['RS_FORMAT']
+                xml_content = (
+                    '<?xml version="1.0" encoding="UTF-8"?>\n'
+                    f'<reportTestcase name="{input_report}" format="{report_format}" pfad="{xml_path.rsplit(input_report,1)[0]}">\n'
+                    f'{xml_params}'
+                    '</reportTestcase>'
+                )
 
                 date_str = matched_row['RSDateOnly'].strftime("%Y-%m-%d") if pd.notna(matched_row['RSDateOnly']) else "nodate"
                 filename = f"{input_report}_{input_fund}_{date_str}_{i}.xml"
